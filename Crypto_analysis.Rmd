@@ -1,0 +1,311 @@
+---
+title: "Cryptocurrency Analysis Report"
+author: "EinsteinYap"
+date: "2025-07-27"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: hide
+    theme: cosmo
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,      # Don't show code by default
+  warning = FALSE,   # Don't show warnings
+  message = FALSE,   # Don't show package messages
+  fig.width = 10,    # Default figure width
+  fig.height = 6,    # Default figure height
+  fig.align = 'center'
+)
+```
+```{r , echo = FALSE}
+# Install required packages (only run this section of code if not yet installed)
+# comment out if already install 
+install.packages(c(
+  'tidyverse', 'quantmod', 'xts', 'zoo', 'forecast',
+  'tseries', 'urca', 'PerformanceAnalytics', 'rugarch',
+  'ggplot2', 'lubridate'
+))
+```
+
+
+# Cryptocurrency Analysis
+## USER INPUT - CHANGE The crypto_symbol to ANALYZE DIFFERENT CRYPTOS
+### Change the crypto_symbol to "BTC", "SOL", "ADA", etc.
+```{r Cryptocurrency Analysis , echo = FALSE }
+crypto_symbol <- "BTC"  
+```
+# 1. Data Download and Preprocessing
+```{r , echo = FALSE}
+# Load required libraries
+library(tidyverse)
+library(quantmod)
+library(xts)
+library(zoo)
+library(forecast)
+library(tseries)
+library(urca)
+library(PerformanceAnalytics)
+library(rugarch)
+library(ggplot2)
+library(lubridate)
+library(scales)
+
+# Construct the symbol for Yahoo Finance
+yahoo_symbol <- paste0(crypto_symbol, "-USD")
+
+# Download cryptocurrency data
+getSymbols(yahoo_symbol, src = "yahoo", from = "2020-01-01", to = Sys.Date(), auto.assign = TRUE)
+crypto_data <- get(yahoo_symbol)
+
+# Convert to dataframe and clean
+crypto_df <- as.data.frame(crypto_data)
+crypto_df$Date <- index(crypto_data)
+colnames(crypto_df) <- c("Open", "High", "Low", "Close", "Volume", "Adjusted", "Date")
+
+# Convert to xts object
+crypto_xts <- xts(crypto_df[,-7], order.by = as.Date(crypto_df$Date))
+
+```
+# 2. Exploratory Data Analysis
+```{r Basic Statistics , echo = FALSE}
+str(crypto_data)
+summary(crypto_xts$Close)
+
+```
+```{r Price Chart , echo = FALSE }
+chart_Series(crypto_xts$Close, name = paste(crypto_symbol, "Closing Price (2018-Present)"))
+
+```
+```{r Daily Returns , echo = FALSE }
+
+crypto_returns <- dailyReturn(crypto_xts$Close)
+chart_Series(crypto_returns, name = paste(crypto_symbol, "Daily Returns"))
+
+```
+
+```{r 30-Day Rolling Volatility , echo = FALSE }
+crypto_volatility <- runSD(crypto_returns, n = 30) * sqrt(252)
+chart_Series(crypto_volatility, name = paste("30-Day Rolling Volatility (Annualized) for", crypto_symbol))
+```
+
+# 3.Time Series Modeling
+
+```{r Stationarity Tests , echo = FALSE }
+cat("ADF Test for Price Series:\n")
+print(adf.test(na.omit(crypto_xts$Close)))
+
+cat("\nADF Test for Returns Series:\n")
+print(adf.test(na.omit(crypto_returns)))
+
+```
+
+## ARIMA Model
+
+```{r ARIMA Model , echo = FALSE }
+arima_model <- auto.arima(crypto_xts$Close, 
+                         seasonal = FALSE, 
+                         stepwise = FALSE, 
+                         approximation = FALSE)
+
+summary(arima_model)
+
+```
+
+## ARIMA Forecast
+```{r ARIMA Forecast , echo = FALSE }
+# Generate forecast
+arima_forecast <- forecast(arima_model, h = 30)
+
+# Get historical data (last 60 days)
+history <- window(arima_model$x, start = length(arima_model$x) - 59)
+
+# Create date sequences
+history_dates <- seq(Sys.Date() - 59, Sys.Date(), by = "day")
+forecast_dates <- seq(Sys.Date() + 1, by = "day", length.out = 30)
+
+# Prepare data frames
+history_data <- data.frame(
+  Date = history_dates,
+  Price = as.numeric(history)
+)
+
+forecast_data <- data.frame(
+  Date = forecast_dates,
+  Point.Forecast = as.numeric(arima_forecast$mean),
+  Lo.80 = as.numeric(arima_forecast$lower[,1]),
+  Hi.80 = as.numeric(arima_forecast$upper[,1]),
+  Lo.95 = as.numeric(arima_forecast$lower[,2]),
+  Hi.95 = as.numeric(arima_forecast$upper[,2])
+)
+
+# Create the plot
+ggplot() +
+  # Historical data (60 days)
+  geom_line(data = history_data, aes(x = Date, y = Price), color = "black", size = 0.8) +
+  
+  # Forecast data (30 days)
+  geom_line(data = forecast_data, aes(x = Date, y = Point.Forecast), color = "blue", size = 0.8) +
+  geom_ribbon(data = forecast_data, aes(x = Date, ymin = Lo.80, ymax = Hi.80), 
+              fill = "blue", alpha = 0.2) +
+  geom_ribbon(data = forecast_data, aes(x = Date, ymin = Lo.95, ymax = Hi.95), 
+              fill = "blue", alpha = 0.1) +
+  
+  # Add vertical line for today
+  geom_vline(xintercept = Sys.Date(), linetype = "dashed", color = "red") +
+  annotate("text", x = Sys.Date(), y = max(history_data$Price), 
+           label = "Today", hjust = -0.1, color = "red") +
+  
+  # Formatting
+  labs(
+    title = paste(crypto_symbol, "Price Forecast"),
+    subtitle = "60-Day History + 30-Day Forecast",
+    y = "Price (USD)",
+    x = "Date"
+  ) +
+  scale_x_date(
+    date_breaks = "2 weeks",
+    date_labels = "%b %d",
+    limits = c(Sys.Date() - 60, Sys.Date() + 31)
+  ) +
+  scale_y_continuous(labels = comma) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(face = "bold")
+  )
+
+```
+
+## GARCH Model for Volatility
+```{r GARCH Model for Volatility , echo = FALSE}
+garch_spec <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+  mean.model = list(armaOrder = c(1,1))
+)
+
+garch_fit <- ugarchfit(garch_spec, data = na.omit(crypto_returns))
+garch_fit
+```
+
+## Conditional Volatility
+
+```{r Conditional Volatility , echo = FALSE }
+plot(garch_fit, which = 3)
+
+```
+
+## Volatility Forecast
+```{r Volatility Forecast, echo = FALSE }
+garch_forecast <- ugarchforecast(garch_fit, n.ahead = 30)
+plot(garch_forecast, which = 3)
+```
+
+# 4. Technical Analysis Indicators
+
+## Moving Averages
+
+```{r moving_averages , echo = FALSE}
+# Clean NA values from the close prices
+clean_close <- na.omit(crypto_xts$Close)
+
+# Calculate moving averages (using cleaned data)
+sma_50 <- SMA(clean_close, n = 50)
+sma_200 <- SMA(clean_close, n = 200)
+
+# Create a new xts object with all series
+ma_data <- merge.xts(clean_close, sma_50, sma_200)
+colnames(ma_data) <- c("Price", "SMA_50", "SMA_200")
+
+# Plot with moving averages
+chart_Series(ma_data$Price, name = paste(crypto_symbol, "with Moving Averages"))
+add_TA(ma_data$SMA_50, on = 1, col = "blue", lwd = 2)
+add_TA(ma_data$SMA_200, on = 1, col = "red", lwd = 2)
+
+# Alternative ggplot version
+ggplot(fortify(ma_data), aes(x = Index)) +
+  geom_line(aes(y = Price, color = "Price"), size = 0.7) +
+  geom_line(aes(y = SMA_50, color = "50-Day SMA"), size = 1) +
+  geom_line(aes(y = SMA_200, color = "200-Day SMA"), size = 1) +
+  scale_color_manual(values = c("Price" = "black", "50-Day SMA" = "blue", "200-Day SMA" = "red")) +
+  labs(title = paste(crypto_symbol, "Price with Moving Averages"),
+       x = "Date", y = "Price (USD)", color = "Series") +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+```
+
+## Relative Strength Index (RSI)
+```{r Relative Strength Index (RSI) , echo = FALSE}
+crypto_xts$RSI_14 <- RSI(crypto_xts$Close, n = 14)
+plot(crypto_xts$RSI_14, main = paste(crypto_symbol, "14-Day RSI"))
+abline(h = 70, col = "red")
+abline(h = 30, col = "green")
+```
+
+
+# 5. Seasonality Analysis
+
+```{r Seasonality Analysis Optional , echo = FALSE}
+monthly_returns <- monthlyReturn(crypto_xts$Close)
+
+ggplot(data = fortify(monthly_returns), aes(x = Index, y = monthly.returns)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~month(Index, label = TRUE), ncol = 4) +
+  labs(title = paste(crypto_symbol, "Monthly Returns Seasonality"),
+       x = "Month",
+       y = "Average Return") +
+  theme_minimal()
+
+```
+
+# 6.Performance Metrics
+
+## Annualized Returns
+
+```{r Annualized Returns , echo = FALSE}
+crypto_performance <- table.AnnualizedReturns(na.omit(crypto_returns))
+crypto_performance
+```
+## Drawdown Analysis
+
+```{r Drawdown Analysis , echo = FALSE}
+crypto_drawdowns <- table.Drawdowns(na.omit(crypto_returns))
+tail(crypto_drawdowns, 10)
+
+```
+
+
+# 7. Saving Results
+## run the code in R so can save the result and data from yahoo finance. 
+```{echo = FALSE}
+# Create directory for results
+if (!dir.exists("crypto_analysis_results")) {
+  dir.create("crypto_analysis_results")
+}
+
+# Save cleaned data
+write.csv(crypto_df, file.path("crypto_analysis_results", 
+                              paste0(tolower(crypto_symbol), "_data_2018_present.csv")), 
+          row.names = FALSE)
+
+# Save workspace
+save.image(file.path("crypto_analysis_results", 
+                    paste0(tolower(crypto_symbol), "_analysis.RData")))
+
+cat("Analysis complete for", crypto_symbol, "!\n")
+cat("Results saved in 'crypto_analysis_results' folder.\n")
+
+```
+
+
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
