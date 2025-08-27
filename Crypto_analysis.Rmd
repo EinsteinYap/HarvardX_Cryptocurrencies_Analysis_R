@@ -22,25 +22,32 @@ knitr::opts_chunk$set(
   fig.align = 'center'
 )
 ```
-```{r , echo = FALSE}
+```{r package to be install, include = FALSE}
 # Install required packages (only run this section of code if not yet installed)
-# comment out if already install 
-install.packages(c(
-  'tidyverse', 'quantmod', 'xts', 'zoo', 'forecast',
-  'tseries', 'urca', 'PerformanceAnalytics', 'rugarch',
-  'ggplot2', 'lubridate'
-))
+
+if (!require(tidyverse)) install.packages("tidyverse")
+if (!require(quantmod)) install.packages("quantmod")
+if (!require(xts)) install.packages("xts")
+if (!require(zoo)) install.packages("zoo")
+if (!require(forecast)) install.packages("forecast")
+if (!require(tseries)) install.packages("tseries")
+if (!require(urca)) install.packages("urca")
+if (!require(PerformanceAnalytics)) install.packages("PerformanceAnalytics")
+if (!require(rugarch)) install.packages("rugarch")
+if (!require(ggplot2)) install.packages("ggplot2")
+if (!require(lubridate)) install.packages("lubridate")
+if (!require(scales)) install.packages("scales")
 ```
 
 
 # Cryptocurrency Analysis
 ## USER INPUT - CHANGE The crypto_symbol to ANALYZE DIFFERENT CRYPTOS
 ### Change the crypto_symbol to "BTC", "SOL", "ADA", etc.
-```{r Cryptocurrency Analysis , echo = FALSE }
+```{r Cryptocurrency Analysis , include = FALSE }
 crypto_symbol <- "BTC"  
 ```
 # 1. Data Download and Preprocessing
-```{r , echo = FALSE}
+```{r , include = FALSE}
 # Load required libraries
 library(tidyverse)
 library(quantmod)
@@ -72,30 +79,30 @@ crypto_xts <- xts(crypto_df[,-7], order.by = as.Date(crypto_df$Date))
 
 ```
 # 2. Exploratory Data Analysis
-```{r Basic Statistics , echo = FALSE}
+```{r Basic Statistics , include = FALSE}
 str(crypto_data)
 summary(crypto_xts$Close)
 
 ```
-```{r Price Chart , echo = FALSE }
+```{r Price Chart , include = FALSE }
 chart_Series(crypto_xts$Close, name = paste(crypto_symbol, "Closing Price (2018-Present)"))
 
 ```
-```{r Daily Returns , echo = FALSE }
+```{r Daily Returns , include = FALSE }
 
 crypto_returns <- dailyReturn(crypto_xts$Close)
 chart_Series(crypto_returns, name = paste(crypto_symbol, "Daily Returns"))
 
 ```
 
-```{r 30-Day Rolling Volatility , echo = FALSE }
+```{r 30-Day Rolling Volatility , include = FALSE }
 crypto_volatility <- runSD(crypto_returns, n = 30) * sqrt(252)
 chart_Series(crypto_volatility, name = paste("30-Day Rolling Volatility (Annualized) for", crypto_symbol))
 ```
 
 # 3.Time Series Modeling
 
-```{r Stationarity Tests , echo = FALSE }
+```{r Stationarity Tests , include = FALSE }
 cat("ADF Test for Price Series:\n")
 print(adf.test(na.omit(crypto_xts$Close)))
 
@@ -106,7 +113,7 @@ print(adf.test(na.omit(crypto_returns)))
 
 ## ARIMA Model
 
-```{r ARIMA Model , echo = FALSE }
+```{r ARIMA Model , include = FALSE }
 arima_model <- auto.arima(crypto_xts$Close, 
                          seasonal = FALSE, 
                          stepwise = FALSE, 
@@ -117,7 +124,7 @@ summary(arima_model)
 ```
 
 ## ARIMA Forecast
-```{r ARIMA Forecast , echo = FALSE }
+```{r ARIMA Forecast , include = FALSE }
 # Generate forecast
 arima_forecast <- forecast(arima_model, h = 30)
 
@@ -182,7 +189,7 @@ ggplot() +
 ```
 
 ## GARCH Model for Volatility
-```{r GARCH Model for Volatility , echo = FALSE}
+```{r GARCH Model for Volatility , include = FALSE}
 garch_spec <- ugarchspec(
   variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
   mean.model = list(armaOrder = c(1,1))
@@ -194,13 +201,13 @@ garch_fit
 
 ## Conditional Volatility
 
-```{r Conditional Volatility , echo = FALSE }
+```{r Conditional Volatility , include = FALSE }
 plot(garch_fit, which = 3)
 
 ```
 
 ## Volatility Forecast
-```{r Volatility Forecast, echo = FALSE }
+```{r Volatility Forecast, include = FALSE }
 garch_forecast <- ugarchforecast(garch_fit, n.ahead = 30)
 plot(garch_forecast, which = 3)
 ```
@@ -209,7 +216,7 @@ plot(garch_forecast, which = 3)
 
 ## Moving Averages
 
-```{r moving_averages , echo = FALSE}
+```{r moving_averages , include = FALSE}
 # Clean NA values from the close prices
 clean_close <- na.omit(crypto_xts$Close)
 
@@ -240,7 +247,7 @@ ggplot(fortify(ma_data), aes(x = Index)) +
 ```
 
 ## Relative Strength Index (RSI)
-```{r Relative Strength Index (RSI) , echo = FALSE}
+```{r Relative Strength Index (RSI) , include = FALSE}
 crypto_xts$RSI_14 <- RSI(crypto_xts$Close, n = 14)
 plot(crypto_xts$RSI_14, main = paste(crypto_symbol, "14-Day RSI"))
 abline(h = 70, col = "red")
@@ -250,7 +257,7 @@ abline(h = 30, col = "green")
 
 # 5. Seasonality Analysis
 
-```{r Seasonality Analysis Optional , echo = FALSE}
+```{r Seasonality Analysis Optional , include = FALSE}
 monthly_returns <- monthlyReturn(crypto_xts$Close)
 
 ggplot(data = fortify(monthly_returns), aes(x = Index, y = monthly.returns)) +
@@ -267,45 +274,23 @@ ggplot(data = fortify(monthly_returns), aes(x = Index, y = monthly.returns)) +
 
 ## Annualized Returns
 
-```{r Annualized Returns , echo = FALSE}
+```{r Annualized Returns , include = FALSE}
 crypto_performance <- table.AnnualizedReturns(na.omit(crypto_returns))
 crypto_performance
 ```
 ## Drawdown Analysis
 
-```{r Drawdown Analysis , echo = FALSE}
+```{r Drawdown Analysis , include = FALSE}
 crypto_drawdowns <- table.Drawdowns(na.omit(crypto_returns))
 tail(crypto_drawdowns, 10)
 
 ```
 
 
-# 7. Saving Results
-## run the code in R so can save the result and data from yahoo finance. 
-```{echo = FALSE}
-# Create directory for results
-if (!dir.exists("crypto_analysis_results")) {
-  dir.create("crypto_analysis_results")
-}
-
-# Save cleaned data
-write.csv(crypto_df, file.path("crypto_analysis_results", 
-                              paste0(tolower(crypto_symbol), "_data_2018_present.csv")), 
-          row.names = FALSE)
-
-# Save workspace
-save.image(file.path("crypto_analysis_results", 
-                    paste0(tolower(crypto_symbol), "_analysis.RData")))
-
-cat("Analysis complete for", crypto_symbol, "!\n")
-cat("Results saved in 'crypto_analysis_results' folder.\n")
-
-```
 
 
 
 
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Note that the `include = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
 
