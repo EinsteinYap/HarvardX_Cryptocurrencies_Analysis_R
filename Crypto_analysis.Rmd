@@ -23,7 +23,7 @@ knitr::opts_chunk$set(
 )
 ```
 ```{r package to be install, include = FALSE}
-# Install required packages (only run this section of code if not yet installed)
+# Install required packages if needed
 
 if (!require(tidyverse)) install.packages("tidyverse")
 if (!require(quantmod)) install.packages("quantmod")
